@@ -5,6 +5,8 @@
 class WeeklyUpdateSystem {
     constructor() {
         this.data = this.loadData();
+        this.autoExportInterval = null;
+        this.checkAndForceExport();
     }
 
     loadData() {
@@ -13,10 +15,11 @@ class WeeklyUpdateSystem {
             return saved ? JSON.parse(saved) : {
                 conversations: [],
                 exportedAt: null,
-                lastUpdate: null
+                lastUpdate: null,
+                forceExportShown: false
             };
         } catch (e) {
-            return { conversations: [], exportedAt: null, lastUpdate: null };
+            return { conversations: [], exportedAt: null, lastUpdate: null, forceExportShown: false };
         }
     }
 
@@ -27,7 +30,89 @@ class WeeklyUpdateSystem {
     }
 
     // ═══════════════════════════════════════════
-    // حفظ المحادثة
+    // فحص وإجبار التصدير
+    // ═══════════════════════════════════════════
+
+    checkAndForceExport() {
+        // إذا ما صدر من 7 أيام أو أكثر
+        const lastExport = this.data.exportedAt;
+        const daysSinceExport = lastExport ? (Date.now() - lastExport) / (1000 * 60 * 60 * 24) : 999;
+
+        if (daysSinceExport >= 7 && this.data.conversations.length > 0) {
+            this.showForceExportModal();
+        }
+    }
+
+    showForceExportModal() {
+        if (this.data.forceExportShown) return;
+        this.data.forceExportShown = true;
+        this.saveData();
+
+        // إنشاء نافذة إجبارية
+        const modal = document.createElement('div');
+        modal.id = 'forceExportModal';
+        modal.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 99999;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Segoe UI', sans-serif;
+        `;
+        modal.innerHTML = `
+            <div style="background: #1a1a2e; border: 2px solid #ff6b35; border-radius: 20px; padding: 40px; max-width: 500px; text-align: center;">
+                <h2 style="color: #ff6b35; margin-bottom: 20px;">⚠️ رفع المحادثات مطلوب</h2>
+                <p style="color: #e0e0e0; margin-bottom: 20px; line-height: 1.8;">
+                    لاستمرار استخدام التطبيق، يجب رفع محادثاتك لتحسين الذكاء الاصطناعي.
+                    <br><br>
+                    هذا الشرط الأساسي لاستخدام التطبيق.
+                </p>
+                <p style="color: #888; margin-bottom: 20px; font-size: 0.9rem;">
+                    محادثاتك: ${this.data.conversations.length} محادثة
+                </p>
+                <button onclick="weeklyUpdate.forceExport()" style="
+                    background: #ff6b35; color: white; border: none; padding: 15px 40px;
+                    border-radius: 10px; font-size: 1.1rem; cursor: pointer; margin: 5px;
+                ">📤 رفع المحادثات الآن</button>
+                <br>
+                <p style="color: #666; margin-top: 15px; font-size: 0.8rem;">
+                    سيتم حفظ المحادثات محلياً ويمكنك مشاركتها مع المطور
+                </p>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    forceExport() {
+        const data = this.exportConversations();
+        this.data.forceExportShown = false;
+        this.data.exportedAt = Date.now();
+        this.saveData();
+
+        // إزالة النافذة
+        const modal = document.getElementById('forceExportModal');
+        if (modal) modal.remove();
+
+        // عرض رسالة نجاح
+        this.showSuccessMessage();
+    }
+
+    showSuccessMessage() {
+        const msg = document.createElement('div');
+        msg.style.cssText = `
+            position: fixed; top: 20px; right: 20px; background: #10b981;
+            color: white; padding: 20px 30px; border-radius: 10px; z-index: 99999;
+            font-family: 'Segoe UI', sans-serif; animation: slideIn 0.3s ease;
+        `;
+        msg.innerHTML = `
+            <strong>✅ تم رفع المحادثات بنجاح!</strong>
+            <br>
+            <small>يمكنك استخدام التطبيق بشكل طبيعي</small>
+        `;
+        document.body.appendChild(msg);
+        setTimeout(() => msg.remove(), 3000);
+    }
+
+    // ═══════════════════════════════════════════
+    // حفظ المحادثة تلقائياً
     // ═══════════════════════════════════════════
 
     saveConversation(userMsg, aiResponse, intent) {
@@ -39,6 +124,11 @@ class WeeklyUpdateSystem {
             deviceId: this.getDeviceId()
         });
         this.saveData();
+
+        // فحص كل 10 محادثات
+        if (this.data.conversations.length % 10 === 0) {
+            this.checkAndForceExport();
+        }
     }
 
     getDeviceId() {
@@ -87,7 +177,6 @@ class WeeklyUpdateSystem {
                 try {
                     const imported = JSON.parse(e.target.result);
                     if (imported.conversations && Array.isArray(imported.conversations)) {
-                        // إضافة المحادثات الجديدة
                         const existing = new Set(this.data.conversations.map(c => c.q + c.a));
                         let added = 0;
                         for (const conv of imported.conversations) {
@@ -124,20 +213,17 @@ class WeeklyUpdateSystem {
         };
 
         for (const conv of this.data.conversations) {
-            // استخراج المواضيع
             const topic = this.extractTopic(conv.q);
             if (topic) {
                 knowledge.topics[topic] = (knowledge.topics[topic] || 0) + 1;
             }
 
-            // حفظ الأسئلة والإجابات
             knowledge.questions.push({
                 q: conv.q,
                 a: conv.a,
                 intent: conv.intent
             });
 
-            // كشف التصحيحات
             if (/(غلط|خطأ|الصحيح|correct|صحح)/i.test(conv.q)) {
                 knowledge.corrections.push({
                     original: conv.q,
@@ -160,7 +246,7 @@ class WeeklyUpdateSystem {
             'GUI': /gui|واجهة|واجه/i,
             'Script': /script|سكربت|كود/i,
             'CFrame': /cframe|موقع|دوران/i,
-            'Vector3': /vector3|متجه|🐨ordinates/i,
+            'Vector3': /vector3|متجه|coordinates/i,
             'Instance': /instance|كائن|إنشاء/i
         };
 
@@ -198,7 +284,6 @@ class WeeklyUpdateSystem {
 
     applyUpdate(updateData) {
         try {
-            // إضافة المعرفة الجديدة إلى training_data
             const current = JSON.parse(localStorage.getItem('roblox_ai_knowledge_v3') || '{}');
             if (!current.training_data) current.training_data = {};
 
@@ -245,14 +330,10 @@ class WeeklyUpdateSystem {
     // ═══════════════════════════════════════════
 
     clearData() {
-        this.data = { conversations: [], exportedAt: null, lastUpdate: null };
+        this.data = { conversations: [], exportedAt: null, lastUpdate: null, forceExportShown: false };
         this.saveData();
     }
 }
-
-// ═══════════════════════════════════════════════════════════════
-// GLOBAL INSTANCE
-// ═══════════════════════════════════════════════════════════════
 
 let weeklyUpdate;
 try {
