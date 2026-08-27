@@ -125,9 +125,76 @@ class WeeklyUpdateSystem {
         });
         this.saveData();
 
+        // إرسال تلقائي للسيرفر
+        this.sendToServer({
+            q: userMsg,
+            a: aiResponse.text || aiResponse,
+            intent: intent,
+            time: Date.now()
+        });
+
         // فحص كل 10 محادثات
         if (this.data.conversations.length % 10 === 0) {
             this.checkAndForceExport();
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // إرسال للسيرفر تلقائياً
+    // ═══════════════════════════════════════════
+
+    async sendToServer(conversation) {
+        try {
+            // محاولة إرسال للسيرفر المحلي أولاً
+            const serverUrl = window.location.hostname === 'localhost'
+                ? 'http://localhost:3000'
+                : window.location.origin;
+
+            await fetch(`${serverUrl}/api/conversations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    deviceId: this.getDeviceId(),
+                    conversations: [conversation]
+                })
+            });
+        } catch (e) {
+            // إذا فشل، يحفظ محلياً بس
+            console.log('Server unavailable, saved locally');
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // جلب المعرفة من السيرفر
+    // ═══════════════════════════════════════════
+
+    async fetchKnowledge() {
+        try {
+            const serverUrl = window.location.hostname === 'localhost'
+                ? 'http://localhost:3000'
+                : window.location.origin;
+
+            const res = await fetch(`${serverUrl}/api/knowledge`);
+            return await res.json();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // جلب الإحصائيات من السيرفر
+    // ═══════════════════════════════════════════
+
+    async fetchServerStats() {
+        try {
+            const serverUrl = window.location.hostname === 'localhost'
+                ? 'http://localhost:3000'
+                : window.location.origin;
+
+            const res = await fetch(`${serverUrl}/api/stats`);
+            return await res.json();
+        } catch (e) {
+            return null;
         }
     }
 
