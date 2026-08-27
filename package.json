@@ -1,0 +1,20 @@
+{
+  "name": "roblox-ai-coder",
+  "version": "1.0.0",
+  "description": "AI-powered Roblox Luau programming assistant",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["roblox", "luau", "ai", "coding"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
